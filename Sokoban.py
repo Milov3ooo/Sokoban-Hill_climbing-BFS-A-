@@ -89,8 +89,7 @@ class SokobanGame:
         return move_map.get(move, '')
     
     # Lưu giải pháp
-    def save_solution(self, map_index: int):
-       def save_solution(self, map_index: int):
+    def save_solution(self, map_index: int):     
         """Lưu giải pháp di chuyển của game Sokoban vào file solution.
 
         Chức năng:
@@ -322,7 +321,7 @@ class SokobanGame:
         ]
 
         # Button labels (key shortcuts)
-        button_texts = ["Pause (P)", "Reset (R)", "Menu (Esc)", "Exit (Q)"]
+        button_texts = ["Pause (P)", "Reset (R)", "SELECT (Esc)", "Quit (Q)"]
 
         # Draw button images and texts
         font = pygame.font.Font(None, 36)
