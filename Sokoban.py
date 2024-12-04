@@ -474,7 +474,7 @@ class SokobanGame:
                 # Vẽ các nút
                 self.draw_button("<", buttons['left'], self.BLUE, True)
                 self.draw_button(">", buttons['right'], self.BLUE, True)
-                self.draw_button("Select", buttons['select'], self.BLUE, True)
+                self.draw_button("Select", buttons['select'], self.DARK_BLUE, True)
                 self.draw_button(f"{self.current_algorithm.upper()}", buttons['algorithm'], self.DARK_BLUE, True)
 
                 pygame.display.flip()
