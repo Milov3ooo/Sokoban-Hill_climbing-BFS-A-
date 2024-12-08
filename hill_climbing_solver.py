@@ -4,6 +4,7 @@ import sys
 import csv
 from typing import List, Tuple, Optional
 from sokoban_common import SokobanState, MOVES
+from pympler import asizeof
 
 class HillClimbingSolver:
     """
@@ -179,28 +180,26 @@ class HillClimbingSolver:
 
     def _log_results(self, algorithm: str, iteration: int, state: SokobanState, start_time: float, end_time: float):
         """
-        Ghi lại kết quả thực thi của thuật toán vào file CSV.
+        Ghi kết quả giải thuật vào tệp CSV.
 
         Arguments:
             algorithm (str): Tên thuật toán.
             iteration (int): Số lần lặp.
-            state (SokobanState): Trạng thái cuối cùng.
+            state (SokobanState): Trạng thái cuối cùng của bài toán.
             start_time (float): Thời điểm bắt đầu.
             end_time (float): Thời điểm kết thúc.
         """
-        # Tính toán bộ nhớ và thời gian
-        storage_used = sys.getsizeof(state) / (1024 * 1024)  # Chuyển sang MB
+        # Sử dụng pympler để đo bộ nhớ của đối tượng state và các đối tượng con
+        storage_used = asizeof.asizeof(state) / (1024 * 1024)  # Chuyển sang MB
         states_visited = iteration
         elapsed_time = end_time - start_time
 
-        # Mở file CSV để ghi kết quả
         with open(self.csv_file, mode='a', newline='') as file:
             writer = csv.writer(file)
-            # Ghi dữ liệu với định dạng căn chỉnh
-            writer.writerow([f"{algorithm:<15}"  
-                             f"{storage_used:>10.2f}"
-                             f"{states_visited:>15}"
-                             f"{elapsed_time:>10.4f}"])
+            writer.writerow([f"{algorithm:<15}"
+                            f"{storage_used:>10.2f}"
+                            f"{states_visited:>15}"
+                            f"{elapsed_time:>10.4f}"])
 
 
 def solve_sokoban_hillclimbing(maze: List[List[int]], 

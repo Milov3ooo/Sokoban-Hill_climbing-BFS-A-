@@ -4,6 +4,7 @@ import csv
 from typing import FrozenSet, List, Tuple, Optional, Set
 from sokoban_common import SokobanState, MOVES
 from collections import deque
+from pympler import asizeof
 
 class BFSSolver:
     def __init__(self, max_iterations: int = 1000000, csv_file: str = 'results.csv'):
@@ -113,26 +114,26 @@ class BFSSolver:
 
     def _log_results(self, algorithm: str, iteration: int, state: SokobanState, start_time: float, end_time: float):
         """
-        Ghi kết quả vào tệp CSV với định dạng phù hợp.
-        
+        Ghi kết quả giải thuật vào tệp CSV.
+
         Arguments:
-        algorithm (str): Tên thuật toán đã sử dụng (ví dụ: 'BFS').
-        iteration (int): Số lượng trạng thái đã được thăm.
-        state (SokobanState): Trạng thái hiện tại của trò chơi.
-        start_time (float): Thời gian bắt đầu giải quyết.
-        end_time (float): Thời gian kết thúc giải quyết.
+            algorithm (str): Tên thuật toán.
+            iteration (int): Số lần lặp.
+            state (SokobanState): Trạng thái cuối cùng của bài toán.
+            start_time (float): Thời điểm bắt đầu.
+            end_time (float): Thời điểm kết thúc.
         """
-        storage_used = sys.getsizeof(state) / (1024 * 1024)  # MB
+        # Sử dụng pympler để đo bộ nhớ của đối tượng state và các đối tượng con
+        storage_used = asizeof.asizeof(state) / (1024 * 1024)  # Chuyển sang MB
         states_visited = iteration
         elapsed_time = end_time - start_time
 
         with open(self.csv_file, mode='a', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow([f"{algorithm:<15}"  # Căn chỉnh thuật toán sang trái với độ rộng 15
-                            f"{storage_used:>10.2f}"  # Căn chỉnh Storage (MB) sang phải với độ rộng 10 và 2 chữ số thập phân
-                            f"{states_visited:>15}"   # Căn chỉnh States Visited sang phải với độ rộng 15
-                            f"{elapsed_time:>10.4f}"]) # Căn chỉnh Time (s) sang phải với độ rộng 10 và 4 chữ số thập phân
-
+            writer.writerow([f"{algorithm:<15}"
+                            f"{storage_used:>10.2f}"
+                            f"{states_visited:>15}"
+                            f"{elapsed_time:>10.4f}"])
 
 def solve_sokoban_bfs(maze: List[List[int]], 
                       player_pos: Tuple[int, int],

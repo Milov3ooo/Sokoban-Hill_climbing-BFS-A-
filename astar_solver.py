@@ -4,6 +4,7 @@ import sys
 import csv
 from typing import List, Tuple, Optional, FrozenSet
 from sokoban_common import SokobanState, MOVES
+from pympler import asizeof
 
 class AStarSolver:
     """
@@ -202,7 +203,8 @@ class AStarSolver:
             start_time (float): Thời điểm bắt đầu.
             end_time (float): Thời điểm kết thúc.
         """
-        storage_used = sys.getsizeof(state) / (1024 * 1024)  # Chuyển sang MB
+        # Sử dụng pympler để đo bộ nhớ của đối tượng state và các đối tượng con
+        storage_used = asizeof.asizeof(state) / (1024 * 1024)  # Chuyển sang MB
         states_visited = iteration
         elapsed_time = end_time - start_time
 
