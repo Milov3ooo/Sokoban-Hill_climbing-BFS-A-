@@ -1,157 +1,225 @@
 import random
+import time
+import sys
+import csv
 from typing import List, Tuple, Optional
 from sokoban_common import SokobanState, MOVES
 
 class HillClimbingSolver:
     """
-    Summary:
-        Giải thuật leo đồi (Hill Climbing) cho bài toán Sokoban. 
-        Giải thuật này tìm kiếm giải pháp bằng cách di chuyển theo hướng có điểm số tốt hơn, 
-        và dừng lại khi không thể tìm thấy trạng thái tốt hơn hoặc đạt được trạng thái đích.
+    Giải quyết bài toán Sokoban sử dụng thuật toán leo đồi (Hill Climbing).
 
-    Arguments:
-        max_iterations -- Số vòng lặp tối đa (mặc định: 1000).
-        max_sideways -- Số lần di chuyển ngang tối đa (mặc định: 100).
+    Thuật toán này tìm kiếm lời giải bằng cách di chuyển tới các trạng thái 'tốt hơn' 
+    dựa trên một hàm đánh giá, với khả năng khắc phục vấn đề kẹt tại điểm cực đại địa phương.
+
+    Attributes:
+        max_iterations (int): Số lần lặp tối đa để tìm kiếm lời giải.
+        max_sideways (int): Số lần di chuyển ngang (không cải thiện) được phép.
+        csv_file (str): Đường dẫn file CSV để ghi kết quả thực thi.
     """
-    def __init__(self, max_iterations: int = 1000, max_sideways: int = 100):
+    def __init__(self, max_iterations: int = 1000, max_sideways: int = 100, csv_file: str = 'results.csv'):
         """
-        Summary:
-            Khởi tạo đối tượng giải thuật leo đồi với các tham số giới hạn số vòng lặp và số lần di chuyển ngang.
+        Khởi tạo bộ giải Hill Climbing.
 
         Arguments:
-            max_iterations -- Số vòng lặp tối đa (mặc định: 1000).
-            max_sideways -- Số lần di chuyển ngang tối đa (mặc định: 100).
+            max_iterations (int): Số lần lặp tối đa. Mặc định là 1000.
+            max_sideways (int): Số lần di chuyển ngang được phép. Mặc định là 100.
+            csv_file (str): Đường dẫn file CSV ghi kết quả. Mặc định là 'results.csv'.
         """
-        self.max_iterations = max_iterations  # Số vòng lặp tối đa
-        self.max_sideways = max_sideways  # Số lần di chuyển ngang tối đa
+        self.max_iterations = max_iterations
+        self.max_sideways = max_sideways
+        self.csv_file = csv_file
+        self._initialize_csv()  # Khởi tạo file CSV khi tạo đối tượng
+
+    def _initialize_csv(self):
+        """
+        Khởi tạo file CSV với các tiêu đề cột, đảm bảo không ghi đè dữ liệu hiện có.
+        """
+        try:
+            # Mở file ở chế độ thêm, không ghi đè
+            with open(self.csv_file, mode='a', newline='') as file:
+                if file.tell() == 0:  # Kiểm tra nếu file trống
+                    writer = csv.writer(file)
+                    # Tiêu đề cột được căn chỉnh để dễ đọc
+                    writer.writerow([f"{'Algorithm':<15}"   # Tên thuật toán
+                                     f"{'Storage (MB)':>10}"  # Bộ nhớ sử dụng
+                                     f"{'States Visited':>15}"  # Số trạng thái đã duyệt
+                                     f"{'Time (s)':>10}"])  # Thời gian thực thi
+        except FileNotFoundError:
+            # Nếu file không tồn tại, tạo mới và ghi tiêu đề
+            with open(self.csv_file, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([f"{'Algorithm':<15}"
+                                 f"{'Storage (MB)':>10}"
+                                 f"{'States Visited':>15}"
+                                 f"{'Time (s)':>10}"])
 
     def solve(self, initial_state: SokobanState) -> Optional[List[Tuple[int, int]]]:
         """
-        Summary:
-            Giải quyết bài toán Sokoban bằng giải thuật leo đồi (Hill Climbing).
+        Giải quyết bài toán Sokoban bằng thuật toán leo đồi.
 
         Arguments:
-            initial_state -- Trạng thái ban đầu của trò chơi.
+            initial_state (SokobanState): Trạng thái ban đầu của bản đồ Sokoban.
 
         Returns:
-            Optional[List[Tuple[int, int]]] -- Danh sách các bước di chuyển (nếu có giải pháp), hoặc None nếu không tìm thấy giải pháp.
+            Optional[List[Tuple[int, int]]]: Danh sách các nước đi để giải bài toán, 
+            hoặc None nếu không tìm được lời giải.
         """
+        
+        # Khởi tạo trạng thái hiện tại và đánh giá điểm số ban đầu
         current_state = initial_state
-        current_score = self.evaluate_state(current_state)  # Đánh giá điểm số của trạng thái hiện tại
-        path = []  # Danh sách lưu các bước di chuyển
+        current_score = self.evaluate_state(current_state)
+        path = []
 
-        for _ in range(self.max_iterations):  # Lặp tối đa max_iterations lần
-            if current_state.is_goal():  # Kiểm tra nếu đã đạt trạng thái đích
-                return path  # Trả về lộ trình
+        # Bắt đầu tính thời gian
+        start_time = time.time()
 
-            neighbors = self.get_neighbors(current_state)  # Lấy các trạng thái liền kề
-            if not neighbors:  # Nếu không có hàng xóm, không thể tiếp tục
+        # Vòng lặp chính của thuật toán leo đồi
+        for iteration in range(self.max_iterations):
+            # Kiểm tra nếu trạng thái hiện tại đã đạt được trạng thái mục tiêu
+            if current_state.is_goal():
+                # Nếu là trạng thái mục tiêu, ghi kết quả và trả về các bước đi đã thực hiện
+                end_time = time.time()
+                self._log_results('Hill Climbing', iteration, current_state, start_time, end_time)
+                return path
+
+            # Lấy danh sách các trạng thái kế tiếp từ trạng thái hiện tại
+            neighbors = self.get_neighbors(current_state)
+            if not neighbors:
+                # Nếu không có hàng xóm (trạng thái kế tiếp) nào, trả về None (không có giải pháp)
                 return None
 
-            # Lọc ra các hàng xóm có điểm số lớn hơn điểm số hiện tại
+            # Lọc ra các trạng thái có điểm số (evaluation score) tốt hơn trạng thái hiện tại
             better_neighbors = [(neighbor, move) for neighbor, move in neighbors if self.evaluate_state(neighbor) > current_score]
 
-            if better_neighbors:  # Nếu có hàng xóm có điểm số lớn hơn
-                best_neighbor = random.choice(better_neighbors)  # Chọn ngẫu nhiên một trong số đó
+            if better_neighbors:
+                # Nếu có trạng thái nào tốt hơn, chọn ngẫu nhiên một trạng thái tốt nhất
+                best_neighbor = random.choice(better_neighbors)
             else:
-                # Nếu không có hàng xóm nào có điểm lớn hơn, lọc các hàng xóm có điểm số bằng
+                # Nếu không có trạng thái nào tốt hơn, lọc các trạng thái có điểm số bằng điểm số hiện tại
                 best_neighbors = [(neighbor, move) for neighbor, move in neighbors if self.evaluate_state(neighbor) == current_score]
-                if best_neighbors:  # Nếu có hàng xóm điểm số bằng
-                    best_neighbor = random.choice(best_neighbors)  # Chọn ngẫu nhiên
+                if best_neighbors:
+                    # Nếu có trạng thái nào có điểm số bằng, chọn ngẫu nhiên một trạng thái tốt nhất
+                    best_neighbor = random.choice(best_neighbors)
                 else:
-                    # Nếu không có hàng xóm nào có điểm bằng hoặc lớn hơn, thiết lập lại ngẫu nhiên
-                    current_state = self.get_random_state(initial_state)  # Tạo lại trạng thái ngẫu nhiên
-                    current_score = self.evaluate_state(current_state)  # Đánh giá lại điểm số
-                    path = []  # Reset lộ trình
+                    # Nếu không có hàng xóm nào, reset trạng thái về trạng thái ngẫu nhiên
+                    current_state = self.get_random_state(initial_state)
+                    current_score = self.evaluate_state(current_state)
+                    path = []
                     continue
 
-            # Cập nhật trạng thái hiện tại
+            # Cập nhật trạng thái hiện tại và điểm số của nó
             current_state = best_neighbor[0]
             current_score = self.evaluate_state(current_state)
-            path.append(best_neighbor[1])  # Thêm nước đi vào lộ trình
+            # Thêm nước đi vào đường đi (path)
+            path.append(best_neighbor[1])
 
-        return None  # Nếu không tìm thấy giải pháp, trả về None
+        # Nếu không tìm được lời giải sau các vòng lặp, ghi kết quả và trả về None
+        end_time = time.time()
+        self._log_results('Hill Climbing', iteration, current_state, start_time, end_time)
+        return None
+
 
     def evaluate_state(self, state: SokobanState) -> float:
         """
-        Summary:
-            Đánh giá điểm số của một trạng thái, dựa trên khoảng cách Manhattan từ các hộp đến mục tiêu.
+        Đánh giá chất lượng của một trạng thái Sokoban.
 
         Arguments:
-            state -- Trạng thái cần đánh giá.
+            state (SokobanState): Trạng thái cần đánh giá.
 
         Returns:
-            float -- Điểm số của trạng thái.
+            float: Điểm số của trạng thái. Điểm càng cao, trạng thái càng gần đích.
         """
-        if state.is_goal():  # Nếu là trạng thái đích, trả về điểm vô cùng
-            return float('inf')
+        if state.is_goal():
+            return float('inf')  # Trạng thái đích có điểm vô cùng
 
         score = 0
-        for box in state.boxes:  # Duyệt qua các hộp
-            # Tính khoảng cách Manhattan tới mục tiêu gần nhất
+        for box in state.boxes:
+            # Tìm khoảng cách ngắn nhất từ hộp tới các mục tiêu
             min_distance = min(abs(box[0] - target[0]) + abs(box[1] - target[1]) for target in state.targets)
-            score -= min_distance  # Trừ khoảng cách để tính điểm số
+            score -= min_distance  # Điểm số giảm khi khoảng cách tới mục tiêu xa
 
         return score
 
     def get_neighbors(self, state: SokobanState) -> List[Tuple[SokobanState, Tuple[int, int]]]:
         """
-        Summary:
-            Lấy các trạng thái liền kề (hàng xóm) từ trạng thái hiện tại.
+        Sinh ra các trạng thái liền kề từ trạng thái hiện tại.
 
         Arguments:
-            state -- Trạng thái hiện tại.
+            state (SokobanState): Trạng thái ban đầu.
 
         Returns:
-            List[Tuple[SokobanState, Tuple[int, int]]] -- Danh sách các trạng thái liền kề và nước đi tương ứng.
+            List[Tuple[SokobanState, Tuple[int, int]]]: Danh sách các trạng thái mới và nước đi tương ứng.
         """
         neighbors = []
-        for move in MOVES:  # Duyệt qua các hướng di chuyển
-            new_state = state.apply_move(move)  # Áp dụng nước đi vào trạng thái hiện tại
-            if new_state != state:  # Nếu trạng thái mới khác trạng thái hiện tại
-                neighbors.append((new_state, move))  # Thêm vào danh sách hàng xóm
+        for move in MOVES:
+            new_state = state.apply_move(move)
+            if new_state != state:
+                neighbors.append((new_state, move))
         return neighbors
 
     def get_random_state(self, initial_state: SokobanState) -> SokobanState:
         """
-        Summary:
-            Tạo một trạng thái ngẫu nhiên từ trạng thái ban đầu.
+        Tạo ra một trạng thái ngẫu nhiên từ trạng thái ban đầu để tránh kẹt tại điểm cực đại địa phương.
 
         Arguments:
-            initial_state -- Trạng thái ban đầu.
+            initial_state (SokobanState): Trạng thái ban đầu.
 
         Returns:
-            SokobanState -- Trạng thái ngẫu nhiên.
+            SokobanState: Trạng thái ngẫu nhiên.
         """
         current_state = initial_state
-        for _ in range(random.randint(1, 20)):  # Di chuyển ngẫu nhiên từ 1 đến 20 lần
-            neighbors = self.get_neighbors(current_state)  # Lấy các hàng xóm
+        for _ in range(random.randint(1, 20)):
+            neighbors = self.get_neighbors(current_state)
             if neighbors:
-                current_state = random.choice(neighbors)[0]  # Chọn ngẫu nhiên một trạng thái mới
+                current_state = random.choice(neighbors)[0]
             else:
-                break  # Nếu không có hàng xóm, dừng lại
+                break
         return current_state
+
+    def _log_results(self, algorithm: str, iteration: int, state: SokobanState, start_time: float, end_time: float):
+        """
+        Ghi lại kết quả thực thi của thuật toán vào file CSV.
+
+        Arguments:
+            algorithm (str): Tên thuật toán.
+            iteration (int): Số lần lặp.
+            state (SokobanState): Trạng thái cuối cùng.
+            start_time (float): Thời điểm bắt đầu.
+            end_time (float): Thời điểm kết thúc.
+        """
+        # Tính toán bộ nhớ và thời gian
+        storage_used = sys.getsizeof(state) / (1024 * 1024)  # Chuyển sang MB
+        states_visited = iteration
+        elapsed_time = end_time - start_time
+
+        # Mở file CSV để ghi kết quả
+        with open(self.csv_file, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            # Ghi dữ liệu với định dạng căn chỉnh
+            writer.writerow([f"{algorithm:<15}"  
+                             f"{storage_used:>10.2f}"
+                             f"{states_visited:>15}"
+                             f"{elapsed_time:>10.4f}"])
+
 
 def solve_sokoban_hillclimbing(maze: List[List[int]], 
                                player_pos: Tuple[int, int],
                                boxes: List[Tuple[int, int]], 
                                targets: List[Tuple[int, int]]) -> Optional[List[Tuple[int, int]]]:
     """
-    Summary:
-        Giải quyết bài toán Sokoban bằng giải thuật leo đồi (Hill Climbing) từ trạng thái ban đầu.
+    Hàm chính để giải bài toán Sokoban bằng thuật toán leo đồi.
 
     Arguments:
-        maze -- Bản đồ trò chơi dưới dạng ma trận 2D.
-        player_pos -- Vị trí ban đầu của người chơi.
-        boxes -- Tập hợp các tọa độ của các hộp.
-        targets -- Tập hợp các tọa độ mục tiêu.
+        maze (List[List[int]]): Bản đồ Sokoban dưới dạng ma trận.
+        player_pos (Tuple[int, int]): Vị trí ban đầu của người chơi.
+        boxes (List[Tuple[int, int]]): Danh sách vị trí các hộp.
+        targets (List[Tuple[int, int]]): Danh sách các vị trí đích.
 
     Returns:
-        Optional[List[Tuple[int, int]]] -- Danh sách các bước di chuyển nếu giải pháp tồn tại, hoặc None nếu không.
+        Optional[List[Tuple[int, int]]]: Danh sách các nước đi để giải bài toán, 
+        hoặc None nếu không tìm được lời giải.
     """
-    # Tạo trạng thái ban đầu từ bản đồ, vị trí người chơi, các hộp và mục tiêu
     initial_state = SokobanState(tuple(tuple(row) for row in maze), player_pos, frozenset(boxes), frozenset(targets))
-    
-    # Khởi tạo solver leo đồi và trả về kết quả
-    solver = HillClimbingSolver()
-    return solver.solve(initial_state)  # Tìm giải pháp từ trạng thái ban đầu
+    solver = HillClimbingSolver(csv_file='results.csv')
+    return solver.solve(initial_state)

@@ -1,0 +1,8 @@
+Algorithm      Storage (MB) States Visited  Time (s)
+Hill Climbing        0.00            999    0.0328
+A*                   0.00          50345    1.7162
+BFS                  8.00         762875    5.8337
+Hill Climbing        0.00            999    0.0221
+A*                   0.00          50345    1.7327
+Hill Climbing        0.00             44    0.0015
+Hill Climbing        0.00            999    0.0227

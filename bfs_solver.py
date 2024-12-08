@@ -1,99 +1,155 @@
+import time
+import sys
+import csv
 from typing import FrozenSet, List, Tuple, Optional, Set
 from sokoban_common import SokobanState, MOVES
 from collections import deque
 
 class BFSSolver:
-    """
-    Summary:
-        Lớp giải thuật tìm kiếm theo chiều rộng (BFS) cho bài toán Sokoban.
-        Lớp này sẽ giải quyết bài toán tìm đường đi từ trạng thái ban đầu đến trạng thái đích bằng cách duyệt qua tất cả các trạng thái hợp lệ.
-
-    Arguments:
-        max_iterations -- Số vòng lặp tối đa để tránh vòng lặp vô tận (mặc định: 1000000).
-    """
-    def __init__(self, max_iterations: int = 1000000):
+    def __init__(self, max_iterations: int = 1000000, csv_file: str = 'results.csv'):
         """
-        Summary:
-            Khởi tạo đối tượng giải thuật BFS với giới hạn số vòng lặp.
-
+        Khởi tạo bộ giải BFS.
+        
         Arguments:
-            max_iterations -- Số vòng lặp tối đa (mặc định là 1000000).
+        max_iterations (int): Số vòng lặp tối đa để tìm kiếm.
+        csv_file (str): Đường dẫn tệp CSV lưu kết quả.
         """
-        self.max_iterations = max_iterations  # Giới hạn số vòng lặp tối đa
+        self.max_iterations = max_iterations
+        self.csv_file = csv_file
+        self._initialize_csv()
+
+    def _initialize_csv(self):
+        """
+        Khởi tạo tệp CSV với tiêu đề nếu tệp không tồn tại hoặc trống.
+        
+        Nếu tệp CSV không tồn tại, phương thức sẽ tạo tệp mới và ghi tiêu đề cột.
+        Nếu tệp đã tồn tại, chỉ thêm tiêu đề nếu tệp trống.
+        """
+        try:
+            with open(self.csv_file, mode='a', newline='') as file:  # Chế độ 'a' cho phép thêm vào file nếu nó tồn tại
+                if file.tell() == 0:  # Kiểm tra nếu file trống
+                    writer = csv.writer(file)
+                    writer.writerow([f"{'Algorithm':<15}"  # Căn chỉnh 'Algorithm' sang trái với độ rộng 15
+                                    f"{'Storage (MB)':>10}"  # Căn chỉnh 'Storage (MB)' sang phải với độ rộng 10
+                                    f"{'States Visited':>15}"  # Căn chỉnh 'States Visited' sang phải với độ rộng 15
+                                    f"{'Time (s)':>10}"])  # Căn chỉnh 'Time (s)' sang phải với độ rộng 10
+        except FileNotFoundError:
+            with open(self.csv_file, mode='w', newline='') as file:  # Chế độ 'w' để tạo mới file và ghi tiêu đề
+                writer = csv.writer(file)
+                writer.writerow([f"{'Algorithm':<15}"  # Căn chỉnh 'Algorithm' sang trái với độ rộng 15
+                                f"{'Storage (MB)':>10}"  # Căn chỉnh 'Storage (MB)' sang phải với độ rộng 10
+                                f"{'States Visited':>15}"  # Căn chỉnh 'States Visited' sang phải với độ rộng 15
+                                f"{'Time (s)':>10}"])  # Căn chỉnh 'Time (s)' sang phải với độ rộng 10
+
 
     def solve(self, initial_state: SokobanState) -> Optional[List[Tuple[int, int]]]:
         """
-        Summary:
-            Giải quyết bài toán Sokoban từ trạng thái ban đầu.
-
+        Giải bài toán Sokoban bằng thuật toán BFS.
+        
         Arguments:
-            initial_state -- Trạng thái ban đầu của trò chơi.
-
+        initial_state (SokobanState): Trạng thái ban đầu của trò chơi.
+        
         Returns:
-            Optional[List[Tuple[int, int]]] -- Danh sách các bước di chuyển (nếu có giải pháp), hoặc None nếu không tìm thấy giải pháp.
+        Optional[List[Tuple[int, int]]]: Một danh sách các bước di chuyển, hoặc None nếu không tìm được lời giải.
         """
-        # Khởi tạo hàng đợi với trạng thái ban đầu và lộ trình rỗng
+        
+        # Tạo hàng đợi (queue) để lưu trữ các trạng thái và đường đi
         queue = deque([(initial_state, [])])
-        visited = set()  # Tập hợp lưu các trạng thái đã thăm để tránh việc duyệt lại
+        visited = set()  # Lưu trữ các trạng thái đã thăm
 
-        for _ in range(self.max_iterations):  # Lặp tối đa max_iterations lần
-            if not queue:  # Nếu hàng đợi rỗng, không còn trạng thái nào để duyệt
+        # Bắt đầu tính thời gian
+        start_time = time.time()
+
+        # Vòng lặp chính của thuật toán BFS
+        for iteration in range(self.max_iterations):
+            if not queue:
+                # Nếu hàng đợi trống, không có giải pháp
                 return None
-
-            # Lấy trạng thái và lộ trình từ hàng đợi
+            
+            # Lấy phần tử đầu tiên trong hàng đợi (FIFO)
             current_state, path = queue.popleft()
-            if current_state.is_goal():  # Kiểm tra nếu đã đạt trạng thái đích
-                return path  # Trả về lộ trình
 
-            # Chuyển trạng thái thành dạng có thể so sánh để kiểm tra đã thăm chưa
+            # Kiểm tra nếu trạng thái hiện tại là trạng thái mục tiêu
+            if current_state.is_goal():
+                end_time = time.time()
+                # Ghi kết quả vào file CSV
+                self._log_results('BFS', iteration, visited, start_time, end_time)
+                # Trả về đường đi từ trạng thái ban đầu đến mục tiêu
+                return path
+
+            # Chuyển trạng thái hiện tại thành một giá trị có thể so sánh (hashable)
             state_hash = self.state_to_hashable(current_state)
             if state_hash in visited:
-                continue  # Nếu trạng thái đã thăm, bỏ qua
+                # Nếu trạng thái đã được thăm, bỏ qua
+                continue
+            
+            # Đánh dấu trạng thái hiện tại là đã thăm
+            visited.add(state_hash)
 
-            visited.add(state_hash)  # Đánh dấu trạng thái là đã thăm
-
-            # Duyệt qua các nước đi hợp lệ từ trạng thái hiện tại
+            # Lấy các trạng thái kế tiếp từ trạng thái hiện tại
             for move in MOVES:
-                next_state = current_state.apply_move(move)  # Áp dụng nước đi vào trạng thái hiện tại
-                if next_state != current_state:  # Nếu trạng thái mới khác trạng thái hiện tại
-                    queue.append((next_state, path + [move]))  # Thêm trạng thái mới vào hàng đợi và cập nhật lộ trình
+                next_state = current_state.apply_move(move)
+                if next_state != current_state:
+                    # Nếu trạng thái kế tiếp khác trạng thái hiện tại, thêm vào hàng đợi
+                    queue.append((next_state, path + [move]))
 
-        return None  # Nếu không tìm thấy giải pháp, trả về None
+        # Nếu không tìm được lời giải sau max_iterations, ghi kết quả và trả về None
+        end_time = time.time()
+        self._log_results('BFS', iteration, visited, start_time, end_time)
+        return None
 
     @staticmethod
     def state_to_hashable(state: SokobanState) -> Tuple[Tuple[int, int], FrozenSet[Tuple[int, int]]]:
         """
-        Summary:
-            Chuyển trạng thái thành một dạng có thể so sánh được (hashable) để lưu vào tập hợp visited.
-
+        Chuyển trạng thái của trò chơi thành một kiểu có thể so sánh được để sử dụng trong tập đã thăm.
+        
         Arguments:
-            state -- Trạng thái của trò chơi.
-
+        state (SokobanState): Trạng thái của trò chơi cần chuyển đổi.
+        
         Returns:
-            Tuple[Tuple[int, int], FrozenSet[Tuple[int, int]]] -- Trạng thái chuyển thành tuple có thể so sánh được.
+        Tuple[Tuple[int, int], FrozenSet[Tuple[int, int]]]: Trạng thái đã được chuyển thành một tuple.
         """
-        return (state.player_pos, state.boxes)  # Trả về tuple chứa vị trí người chơi và các hộp
+        return (state.player_pos, state.boxes)
+
+    def _log_results(self, algorithm: str, iteration: int, state: SokobanState, start_time: float, end_time: float):
+        """
+        Ghi kết quả vào tệp CSV với định dạng phù hợp.
+        
+        Arguments:
+        algorithm (str): Tên thuật toán đã sử dụng (ví dụ: 'BFS').
+        iteration (int): Số lượng trạng thái đã được thăm.
+        state (SokobanState): Trạng thái hiện tại của trò chơi.
+        start_time (float): Thời gian bắt đầu giải quyết.
+        end_time (float): Thời gian kết thúc giải quyết.
+        """
+        storage_used = sys.getsizeof(state) / (1024 * 1024)  # MB
+        states_visited = iteration
+        elapsed_time = end_time - start_time
+
+        with open(self.csv_file, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([f"{algorithm:<15}"  # Căn chỉnh thuật toán sang trái với độ rộng 15
+                            f"{storage_used:>10.2f}"  # Căn chỉnh Storage (MB) sang phải với độ rộng 10 và 2 chữ số thập phân
+                            f"{states_visited:>15}"   # Căn chỉnh States Visited sang phải với độ rộng 15
+                            f"{elapsed_time:>10.4f}"]) # Căn chỉnh Time (s) sang phải với độ rộng 10 và 4 chữ số thập phân
+
 
 def solve_sokoban_bfs(maze: List[List[int]], 
                       player_pos: Tuple[int, int],
                       boxes: List[Tuple[int, int]], 
                       targets: List[Tuple[int, int]]) -> Optional[List[Tuple[int, int]]]:
     """
-    Summary:
-        Giải quyết bài toán Sokoban bằng giải thuật tìm kiếm theo chiều rộng (BFS) từ trạng thái ban đầu.
-
-    Arguments:
-        maze -- Bản đồ trò chơi dưới dạng ma trận 2D.
-        player_pos -- Vị trí ban đầu của người chơi.
-        boxes -- Tập hợp các tọa độ của các hộp.
-        targets -- Tập hợp các tọa độ mục tiêu.
-
-    Returns:
-        Optional[List[Tuple[int, int]]] -- Danh sách các bước di chuyển nếu giải pháp tồn tại, hoặc None nếu không.
-    """
-    # Tạo trạng thái ban đầu từ bản đồ, vị trí người chơi, vị trí các hộp và mục tiêu
-    initial_state = SokobanState(tuple(tuple(row) for row in maze), player_pos, frozenset(boxes), frozenset(targets))
+    Giải bài toán Sokoban bằng thuật toán BFS.
     
-    # Khởi tạo solver BFS và trả về kết quả
-    solver = BFSSolver()
-    return solver.solve(initial_state)  # Tìm giải pháp từ trạng thái ban đầu
+    Arguments:
+    maze (List[List[int]]): Ma trận của mê cung.
+    player_pos (Tuple[int, int]): Vị trí ban đầu của người chơi.
+    boxes (List[Tuple[int, int]]): Danh sách các hộp trong trò chơi.
+    targets (List[Tuple[int, int]]): Danh sách các vị trí mục tiêu của hộp.
+    
+    Returns:
+    Optional[List[Tuple[int, int]]]: Một danh sách các bước di chuyển, hoặc None nếu không tìm được lời giải.
+    """
+    initial_state = SokobanState(tuple(tuple(row) for row in maze), player_pos, frozenset(boxes), frozenset(targets))
+    solver = BFSSolver(csv_file='results.csv')  # Chỉ định tệp CSV
+    return solver.solve(initial_state)

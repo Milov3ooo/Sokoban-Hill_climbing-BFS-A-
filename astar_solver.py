@@ -1,170 +1,235 @@
 import heapq
+import time
+import sys
+import csv
 from typing import List, Tuple, Optional, FrozenSet
 from sokoban_common import SokobanState, MOVES
 
 class AStarSolver:
     """
-    Summary:
-        Lớp giải thuật A* tối ưu cho bài toán Sokoban.
-        Lớp này áp dụng thuật toán A* để tìm kiếm giải pháp từ trạng thái ban đầu đến trạng thái đích,
-        với việc tối ưu hóa tìm kiếm bằng cách sử dụng heuristic và phát hiện bế tắc.
+    Lớp giải quyết bài toán Sokoban sử dụng thuật toán A*.
+    
+    Thuật toán A* được sử dụng để tìm đường đi ngắn nhất trong trò chơi Sokoban, 
+    có tính đến các ràng buộc và trạng thái của các hộp.
 
-    Arguments:
-        max_iterations -- Số vòng lặp tối đa (mặc định là 1000000).
+    Attributes:
+        max_iterations (int): Số lần lặp tối đa để tìm giải pháp.
+        csv_file (str): Đường dẫn tới tệp CSV để ghi kết quả.
     """
-    def __init__(self, max_iterations: int = 1000000):
+    def __init__(self, max_iterations: int = 1000000, csv_file: str = 'results.csv'):
         """
-        Summary:
-            Khởi tạo đối tượng giải thuật A* với số vòng lặp tối đa.
+        Khởi tạo bộ giải A* Sokoban.
 
         Arguments:
-            max_iterations -- Số vòng lặp tối đa (mặc định là 1000000).
+            max_iterations (int): Số lần lặp tối đa để tìm giải pháp. Mặc định là 1.000.000.
+            csv_file (str): Tên tệp CSV để lưu kết quả. Mặc định là 'results.csv'.
         """
-        self.max_iterations = max_iterations  # Giới hạn số vòng lặp tối đa
-    
+        self.max_iterations = max_iterations
+        self.csv_file = csv_file
+        self._initialize_csv()  # Khởi tạo tệp CSV khi tạo đối tượng
+
+    def _initialize_csv(self):
+        """
+        Khởi tạo tệp CSV, thêm tiêu đề nếu tệp trống hoặc chưa tồn tại.
+        
+        Chức năng này đảm bảo tệp CSV luôn có tiêu đề được định dạng đúng.
+        """
+        try:
+            # Mở file ở chế độ nối thêm để tránh ghi đè
+            with open(self.csv_file, mode='a', newline='') as file:
+                if file.tell() == 0:  # Kiểm tra nếu file trống
+                    writer = csv.writer(file)
+                    # Viết tiêu đề với căn chỉnh phù hợp
+                    writer.writerow([f"{'Algorithm':<15}"
+                                    f"{'Storage (MB)':>10}"
+                                    f"{'States Visited':>15}"
+                                    f"{'Time (s)':>10}"])
+        except FileNotFoundError:
+            # Nếu file không tồn tại, tạo mới và ghi tiêu đề
+            with open(self.csv_file, mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([f"{'Algorithm':<15}"
+                                f"{'Storage (MB)':>10}"
+                                f"{'States Visited':>15}"
+                                f"{'Time (s)':>10}"])
+
     def solve(self, initial_state: SokobanState) -> Optional[List[Tuple[int, int]]]:
         """
-        Summary:
-            Giải quyết bài toán Sokoban bằng giải thuật A* tối ưu.
+        Giải quyết bài toán Sokoban bằng thuật toán A*.
 
         Arguments:
-            initial_state -- Trạng thái ban đầu của trò chơi.
+            initial_state (SokobanState): Trạng thái ban đầu của bản đồ Sokoban.
 
         Returns:
-            Optional[List[Tuple[int, int]]] -- Danh sách các bước di chuyển (nếu có giải pháp), hoặc None nếu không có.
+            Optional[List[Tuple[int, int]]]: Danh sách các nước đi để giải quyết bài toán,
+            hoặc None nếu không tìm thấy giải pháp.
         """
-        # Khởi tạo node bắt đầu với heuristic, chi phí ban đầu, và lộ trình rỗng
+        
+        # Khởi tạo điểm xuất phát cho thuật toán A*
         start_node = (initial_state.heuristic(), 0, [], initial_state)
-        frontier = [start_node]  # Hàng đợi ưu tiên (min-heap)
-        explored = set()  # Tập các trạng thái đã thăm
-        deadlock_cache = {}  # Bộ nhớ đệm để kiểm tra trạng thái bế tắc
+        # frontier: hàng đợi ưu tiên (min-heap) lưu trữ các trạng thái cần kiểm tra, theo thứ tự chi phí thấp nhất
+        frontier = [start_node]
+        # explored: tập trạng thái đã được kiểm tra
+        explored = set()
+        # deadlock_cache: bộ nhớ lưu trữ các trạng thái đã xác định là deadlock (bế tắc)
+        deadlock_cache = {}
 
-        for _ in range(self.max_iterations):  # Lặp tối đa max_iterations lần
-            if not frontier:  # Nếu không còn node trong hàng đợi, không tìm thấy giải pháp
+        # Thời gian bắt đầu
+        start_time = time.time()
+
+        # Vòng lặp chính của thuật toán A*
+        for iteration in range(self.max_iterations):
+            # Nếu frontier trống, tức là không còn trạng thái nào để kiểm tra, trả về None
+            if not frontier:
                 return None
 
-            # Lấy node có chi phí thấp nhất từ hàng đợi
+            # Lấy phần tử có chi phí thấp nhất từ frontier
             _, cost, path, current_state = heapq.heappop(frontier)
 
-            if current_state.is_goal():  # Kiểm tra nếu đã đạt trạng thái đích
-                return path  # Trả về lộ trình
+            # Kiểm tra xem trạng thái hiện tại có phải là trạng thái mục tiêu không
+            if current_state.is_goal():
+                # Nếu là mục tiêu, tính toán thời gian kết thúc và trả về các nước đi
+                end_time = time.time()
+                self._log_results('A*', iteration, current_state, start_time, end_time)
+                return path
 
-            # Chuyển trạng thái thành dạng có thể so sánh (hashable)
+            # Chuyển trạng thái hiện tại thành dạng có thể so sánh (hashable) để kiểm tra đã thăm chưa
             state_hash = self.state_to_hashable(current_state)
-            if state_hash in explored:  # Nếu trạng thái đã được thăm, bỏ qua
+            # Nếu trạng thái đã được thăm, bỏ qua
+            if state_hash in explored:
                 continue
-            explored.add(state_hash)  # Đánh dấu trạng thái là đã thăm
+            # Thêm trạng thái hiện tại vào tập explored
+            explored.add(state_hash)
 
-            # Duyệt qua các nước đi hợp lệ
+            # Duyệt qua tất cả các nước đi có thể có
             for move in MOVES:
-                next_state = current_state.apply_move(move)  # Áp dụng nước đi vào trạng thái hiện tại
+                # Áp dụng nước đi và tạo ra trạng thái tiếp theo
+                next_state = current_state.apply_move(move)
+                # Nếu trạng thái tiếp theo khác với trạng thái hiện tại và không bị deadlock
                 if next_state != current_state and not self.is_deadlock(next_state, deadlock_cache):
-                    # Tính toán chi phí và heuristic cho trạng thái tiếp theo
+                    # Tính toán chi phí mới và heuristic cho trạng thái tiếp theo
                     next_cost = cost + 1
                     next_heuristic = next_state.heuristic()
-                    # Tạo node mới với chi phí tổng cộng là chi phí hiện tại cộng heuristic
+                    # Tạo một node mới cho trạng thái tiếp theo và thêm vào frontier
                     next_node = (next_cost + next_heuristic, next_cost, path + [move], next_state)
-                    heapq.heappush(frontier, next_node)  # Thêm node mới vào hàng đợi
+                    heapq.heappush(frontier, next_node)
 
-        return None  # Nếu không tìm thấy giải pháp, trả về None
+        # Nếu không tìm thấy giải pháp sau khi kiểm tra hết các trạng thái, tính toán thời gian kết thúc và trả về None
+        end_time = time.time()
+        self._log_results('A*', iteration, current_state, start_time, end_time)
+        return None
+
 
     @staticmethod
     def state_to_hashable(state: SokobanState) -> Tuple[Tuple[int, int], FrozenSet[Tuple[int, int]]]:
         """
-        Summary:
-            Chuyển trạng thái thành dạng có thể so sánh được để kiểm tra các trạng thái đã thăm.
+        Chuyển trạng thái Sokoban thành một dạng có thể băm được.
 
         Arguments:
-            state -- Trạng thái của trò chơi.
+            state (SokobanState): Trạng thái cần chuyển đổi.
 
         Returns:
-            Tuple[Tuple[int, int], FrozenSet[Tuple[int, int]]] -- Trạng thái được chuyển thành tuple có thể so sánh được.
+            Tuple chứa vị trí người chơi và vị trí các hộp.
         """
-        return (state.player_pos, state.boxes)  # Trả về tuple chứa vị trí người chơi và các hộp
+        return (state.player_pos, state.boxes)
 
     def is_deadlock(self, state: SokobanState, deadlock_cache: dict) -> bool:
         """
-        Summary:
-            Kiểm tra trạng thái có phải bế tắc không bằng cách sử dụng bộ nhớ đệm.
+        Kiểm tra xem trạng thái hiện tại có phải là bế tắc không.
 
         Arguments:
-            state -- Trạng thái của trò chơi.
-            deadlock_cache -- Bộ nhớ đệm để kiểm tra các trạng thái bế tắc.
+            state (SokobanState): Trạng thái cần kiểm tra.
+            deadlock_cache (dict): Bộ nhớ đệm để lưu trữ các trạng thái bế tắc.
 
         Returns:
-            bool -- True nếu trạng thái là bế tắc, False nếu không.
+            bool: True nếu là bế tắc, False nếu ngược lại.
         """
-        state_hash = self.state_to_hashable(state)  # Chuyển trạng thái thành dạng có thể so sánh
-        if state_hash in deadlock_cache:  # Nếu trạng thái đã được kiểm tra
-            return deadlock_cache[state_hash]  # Trả về kết quả từ bộ nhớ đệm
+        state_hash = self.state_to_hashable(state)
+        if state_hash in deadlock_cache:
+            return deadlock_cache[state_hash]
 
-        # Kiểm tra trạng thái có bế tắc không
         is_deadlock = self.check_deadlock(state)
-        deadlock_cache[state_hash] = is_deadlock  # Lưu kết quả vào bộ nhớ đệm
+        deadlock_cache[state_hash] = is_deadlock
         return is_deadlock
 
     def check_deadlock(self, state: SokobanState) -> bool:
         """
-        Summary:
-            Kiểm tra trạng thái có bế tắc không bằng cách kiểm tra từng hộp.
+        Kiểm tra xem có hộp nào ở trạng thái bế tắc không.
 
         Arguments:
-            state -- Trạng thái của trò chơi.
+            state (SokobanState): Trạng thái cần kiểm tra.
 
         Returns:
-            bool -- True nếu có bế tắc, False nếu không.
+            bool: True nếu có hộp bị bế tắc, False nếu ngược lại.
         """
         for box in state.boxes:
-            if self.is_corner_deadlock(state, box):  # Kiểm tra nếu hộp bị bế tắc ở góc
+            if self.is_corner_deadlock(state, box):
                 return True
         return False
 
     def is_corner_deadlock(self, state: SokobanState, box: Tuple[int, int]) -> bool:
         """
-        Summary:
-            Kiểm tra xem một hộp có bị bế tắc ở góc không.
+        Kiểm tra xem hộp có ở trạng thái bế tắc góc không.
 
         Arguments:
-            state -- Trạng thái của trò chơi.
-            box -- Vị trí của hộp cần kiểm tra.
+            state (SokobanState): Trạng thái của bản đồ.
+            box (Tuple[int, int]): Vị trí của hộp cần kiểm tra.
 
         Returns:
-            bool -- True nếu hộp bị bế tắc ở góc, False nếu không.
+            bool: True nếu hộp bị kẹt ở góc, False nếu ngược lại.
         """
         x, y = box
-        if box in state.targets:  # Nếu hộp đã nằm trên mục tiêu, không phải bế tắc
+        if box in state.targets:
             return False
         
-        # Kiểm tra nếu có các tường xung quanh hộp (góc bế tắc)
         walls = [
-            (state.maze[y-1][x] == 1 and state.maze[y][x-1] == 1),
-            (state.maze[y-1][x] == 1 and state.maze[y][x+1] == 1),
-            (state.maze[y+1][x] == 1 and state.maze[y][x-1] == 1),
-            (state.maze[y+1][x] == 1 and state.maze[y][x+1] == 1)
+            (state.maze[y-1][x] == 1 and state.maze[y][x-1] == 1),  # Góc trên trái
+            (state.maze[y-1][x] == 1 and state.maze[y][x+1] == 1),  # Góc trên phải
+            (state.maze[y+1][x] == 1 and state.maze[y][x-1] == 1),  # Góc dưới trái
+            (state.maze[y+1][x] == 1 and state.maze[y][x+1] == 1)   # Góc dưới phải
         ]
         
-        return any(walls)  # Nếu có bất kỳ tường nào, hộp sẽ bị bế tắc
+        return any(walls)
+
+    def _log_results(self, algorithm: str, iteration: int, state: SokobanState, start_time: float, end_time: float):
+        """
+        Ghi kết quả giải thuật vào tệp CSV.
+
+        Arguments:
+            algorithm (str): Tên thuật toán.
+            iteration (int): Số lần lặp.
+            state (SokobanState): Trạng thái cuối cùng của bài toán.
+            start_time (float): Thời điểm bắt đầu.
+            end_time (float): Thời điểm kết thúc.
+        """
+        storage_used = sys.getsizeof(state) / (1024 * 1024)  # Chuyển sang MB
+        states_visited = iteration
+        elapsed_time = end_time - start_time
+
+        with open(self.csv_file, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([f"{algorithm:<15}"
+                            f"{storage_used:>10.2f}"
+                            f"{states_visited:>15}"
+                            f"{elapsed_time:>10.4f}"])
 
 def solve_sokoban_astar(maze: List[List[int]], 
                         player_pos: Tuple[int, int],
                         boxes: List[Tuple[int, int]], 
                         targets: List[Tuple[int, int]]) -> Optional[List[Tuple[int, int]]]:
     """
-    Summary:
-        Giải quyết bài toán Sokoban bằng giải thuật A* tối ưu từ trạng thái ban đầu.
+    Hàm giải quyết bài toán Sokoban sử dụng thuật toán A*.
 
     Arguments:
-        maze -- Bản đồ trò chơi dưới dạng ma trận 2D.
-        player_pos -- Vị trí ban đầu của người chơi.
-        boxes -- Tập hợp các tọa độ của các hộp.
-        targets -- Tập hợp các tọa độ mục tiêu.
+        maze (List[List[int]]): Bản đồ trò chơi, với 1 là tường, 0 là ô trống.
+        player_pos (Tuple[int, int]): Vị trí ban đầu của người chơi.
+        boxes (List[Tuple[int, int]]): Danh sách vị trí các hộp.
+        targets (List[Tuple[int, int]]): Danh sách vị trí đích của các hộp.
 
     Returns:
-        Optional[List[Tuple[int, int]]] -- Danh sách các bước di chuyển nếu giải pháp tồn tại, hoặc None nếu không.
+        Optional[List[Tuple[int, int]]]: Danh sách các nước đi để giải quyết bài toán,
+        hoặc None nếu không tìm thấy giải pháp.
     """
-    # Tạo trạng thái ban đầu từ bản đồ, vị trí người chơi, các hộp và mục tiêu
     initial_state = SokobanState(tuple(tuple(row) for row in maze), player_pos, frozenset(boxes), frozenset(targets))
-    
-    # Khởi tạo solver A* và trả về kết quả
-    solver = AStarSolver()  # Khởi tạo đối tượng giải thuật A* tối ưu
-    return solver.solve(initial_state)  # Tìm giải pháp từ trạng thái ban đầu
+    solver = AStarSolver(csv_file='results.csv')
+    return solver.solve(initial_state)
